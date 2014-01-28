@@ -797,8 +797,8 @@ class HTTPClient
       socket = nil
       begin
         @debug_dev << "! CONNECT TO #{site.host}:#{site.port}\n" if @debug_dev
-				clean_host = site.host.delete("[]")
-				clean_local = @socket_local.host.delete("[]")
+        clean_host = site.host.delete("[]")
+        clean_local = @socket_local.host.delete("[]")
         if str = @test_loopback_http_response.shift
           socket = LoopBackSocket.new(clean_host, site.port, str)
         elsif @socket_local == Site::EMPTY
@@ -862,8 +862,6 @@ class HTTPClient
       @state = :DATA
       req = @requests.shift
       if req.header.request_method == 'HEAD' or no_message_body?(@status)
-        # Discard any remaining data?
-        @socket.readpartial(0)
         @content_length = 0
         if @next_connection
           @state = :WAIT
@@ -975,7 +973,6 @@ class HTTPClient
     RS = "\r\n"
     def read_body_chunked(&block)
       buf = empty_bin_str
-      @debug_dev << "read_body_chunked from #{Thread.current.object_id}" if @debug_dev
       while true
         len = @socket.gets(RS)
         if len.nil? # EOF
@@ -985,15 +982,12 @@ class HTTPClient
         @chunk_length = len.hex
         if @chunk_length == 0
           @content_length = 0
-          @socket.readpartial(256)
-          # @socket.gets(RS)
-          # @socket.read(2)
+          @socket.gets(RS)
           return
         end
         timeout(@receive_timeout, ReceiveTimeoutError) do
           @socket.read(@chunk_length, buf)
-          @socket.readpartial(256)
-          # @socket.read(2)
+          @socket.read(2)
         end
         unless buf.empty?
           yield buf
