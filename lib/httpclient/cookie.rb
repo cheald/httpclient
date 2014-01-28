@@ -20,31 +20,25 @@ class WebAgent
   module CookieUtils
 
     def head_match?(str1, str2)
-      str1 == str2[0, str1.length]
-    end
-
-    def tail_match?(str1, str2)
-      if str1.length > 0
-	str1 == str2[-str1.length..-1].to_s
-      else
-	true
-      end
+      str2.start_with? str1
     end
 
     def domain_match(host, domain)
-      domainname = domain.sub(/\.\z/, '').downcase
-      hostname = host.sub(/\.\z/, '').downcase
-      case domain
-      when /\d+\.\d+\.\d+\.\d+/
-	return (hostname == domainname)
-      when '.' 
-	return true
-      when /^\./
-        # allows; host == rubyforge.org, domain == .rubyforge.org
-	return tail_match?(domainname, '.' + hostname)
-      else
-	return (hostname == domainname)
+      @domain_match_cache ||= {}
+      key = (host + "|" + domain).downcase
+      if !@domain_match_cache.key?(key)
+        domainname = domain.sub(/\.\z/, '').downcase
+        hostname = host.sub(/\.\z/, '').downcase
+        @domain_match_cache[key] = case domain
+        when '.'
+          true
+        when /^\./
+          ("." + hostname).end_with?(domainname)
+        else
+          hostname == domainname
+        end
       end
+      @domain_match_cache[key]
     end
   end
 
@@ -103,59 +97,55 @@ class WebAgent
 
     def flag
       flg = 0
-      flg += USE  if @use
-      flg += SECURE  if @secure
+      flg += USE        if @use
+      flg += SECURE     if @secure
       flg += HTTP_ONLY  if @http_only
-      flg += DOMAIN  if @domain_orig
-      flg += PATH  if @path_orig
-      flg += DISCARD if @discard
-      flg += OVERRIDE if @override
+      flg += DOMAIN     if @domain_orig
+      flg += PATH       if @path_orig
+      flg += DISCARD    if @discard
+      flg += OVERRIDE   if @override
       flg
     end
 
     def set_flag(flag)
       flag = flag.to_i
-      @use = true      if flag & USE > 0
-      @secure = true   if flag & SECURE > 0
-      @http_only = true   if flag & HTTP_ONLY > 0
+      @use         = true if flag & USE > 0
+      @secure      = true if flag & SECURE > 0
+      @http_only   = true if flag & HTTP_ONLY > 0
       @domain_orig = true if flag & DOMAIN > 0
-      @path_orig = true if flag & PATH > 0
-      @discard  = true if flag & DISCARD > 0
-      @override = true if flag & OVERRIDE > 0
+      @path_orig   = true if flag & PATH > 0
+      @discard     = true if flag & DISCARD > 0
+      @override    = true if flag & OVERRIDE > 0
     end
 
     def match?(url)
       domainname = url.host
-      if (!domainname ||
-	  !domain_match(domainname, @domain) ||
-	  (@path && !head_match?(@path, url.path.empty? ? '/' : url.path)) ||
-	  (@secure && (url.scheme != 'https')) )
-	return false
-      else
-	return true
-      end
+      domainname &&
+        domain_match(domainname, @domain) &&
+        (!@path || (url.path.empty? ? '/' : url.path).start_with?(@path)) &&
+        (!@secure || url.scheme == 'https')
     end
 
     def join_quotedstr(array, sep)
       ret = Array.new
       old_elem = nil
       array.each{|elem|
-	if (elem.scan(/"/).length % 2) == 0
-	  if old_elem
-	    old_elem << sep << elem
-	  else
-	    ret << elem
-	    old_elem = nil
-	  end  
-	else
-	  if old_elem
-	    old_elem << sep << elem
-	    ret << old_elem
-	    old_elem = nil
-	  else
-	    old_elem = elem.dup
-	  end
-	end
+        if (elem.scan(/"/).length % 2) == 0
+          if old_elem
+            old_elem << sep << elem
+          else
+            ret << elem
+            old_elem = nil
+          end
+        else
+          if old_elem
+            old_elem << sep << elem
+            ret << old_elem
+            old_elem = nil
+          else
+            old_elem = elem.dup
+          end
+        end
       }
       ret
     end
@@ -168,34 +158,34 @@ class WebAgent
       cookie_elem -= [""] # del empty elements, a cookie might included ";;"
       first_elem = cookie_elem.shift
       if first_elem !~ /([^=]*)(\=(.*))?/
-	return
-	## raise ArgumentError 'invalid cookie value'
+        return
+        ## raise ArgumentError 'invalid cookie value'
       end
       @name = $1.strip
       @value = normalize_cookie_value($3)
-      cookie_elem.each{|pair|
-	key, value = pair.split(/=/, 2)  ## value may nil
-	key.strip!
+      cookie_elem.each do |pair|
+        key, value = pair.split(/\=/, 2)  ## value may nil
+        key.strip!
         value = normalize_cookie_value(value)
-	case key.downcase
-	when 'domain'
-	  @domain = value
-	when 'expires'
+        case key.downcase
+        when 'domain'
+          @domain = value
+        when 'expires'
           @expires = nil
-	  begin
-	    @expires = Time.parse(value).gmtime if value
-	  rescue ArgumentError
-	  end
-	when 'path'
-	  @path = value
-	when 'secure'
-	  @secure = true  ## value may nil, but must 'true'.
-	when 'httponly'
-	  @http_only = true  ## value may nil, but must 'true'.
-	else
-	  ## ignore
-	end
-      }
+          begin
+            @expires = Time.parse(value).gmtime if value
+          rescue ArgumentError
+          end
+        when 'path'
+          @path = value
+        when 'secure'
+          @secure = true  ## value may nil, but must 'true'.
+        when 'httponly'
+          @http_only = true  ## value may nil, but must 'true'.
+        else
+          ## ignore
+        end
+      end
     end
 
   private
@@ -265,13 +255,14 @@ class WebAgent
     end
 
     def check_expired_cookies
-      @cookies.reject!{|cookie|
-        is_expired = (cookie.expires && (cookie.expires < Time.now.gmtime))
+      now = Time.now.gmtime
+      @cookies.reject! do |cookie|
+        is_expired = (cookie.expires && cookie.expires < now)
         if is_expired && !cookie.discard?
           @is_saved = false
         end
         is_expired
-      }
+      end
     end
 
     def parse(str, url)
@@ -283,16 +274,19 @@ class WebAgent
     def find(url)
       return nil if @cookies.empty?
 
-      cookie_list = Array.new
-      @cookies.each{|cookie|
-        is_expired = (cookie.expires && (cookie.expires < Time.now.gmtime))
-        if cookie.use? && !is_expired && cookie.match?(url)
-          if cookie_list.select{|c1| c1.name == cookie.name}.empty?
-            cookie_list << cookie
+      now = Time.now.gmtime
+      cookies = []
+      cookie_names = {}
+      @cookies.each do |cookie|
+        select = false
+        if cookie.use? && (!cookie.expires || cookie.expires > now) && cookie.match?(url)
+          if !cookie_names.key?(cookie.name)
+            cookies << cookie
+            cookie_names[cookie.name] = true
           end
         end
-      }
-      return make_cookie_str(cookie_list)
+      end
+      make_cookie_str cookies
     end
 
     def add(given)
@@ -326,10 +320,10 @@ class WebAgent
       cookie.path_orig = given.path
 
       if cookie.discard? || cookie.expires == nil
-	cookie.discard = true
+        cookie.discard = true
       else
-	cookie.discard = false
-	@is_saved = false
+        cookie.discard = false
+        @is_saved = false
       end
     end
 
@@ -361,17 +355,17 @@ class WebAgent
     # Who use it?
     def check_cookie_accept_domain(domain)
       unless domain
-	return false
+        return false
       end
       @accept_domains.each{|dom|
-	if domain_match(domain, dom)
-	  return true
-	end
+        if domain_match(domain, dom)
+          return true
+        end
       }
       @reject_domains.each{|dom|
-	if domain_match(domain, dom)
-	  return false
-	end
+        if domain_match(domain, dom)
+          return false
+        end
       }
       return true
     end
@@ -380,14 +374,14 @@ class WebAgent
 
     def make_cookie_str(cookie_list)
       if cookie_list.empty?
-	return nil
+        return nil
       end
 
       ret = ''
       c = cookie_list.shift
       ret += "#{c.name}=#{c.value}"
       cookie_list.each{|cookie|
-	ret += "; #{cookie.name}=#{cookie.value}"
+        ret += "; #{cookie.name}=#{cookie.value}"
       }
       return ret
     end
@@ -431,7 +425,7 @@ class WebAgent
     # not tested well; used only netscape_rule = true.
     def cookie_error(err, override)
       if !err.kind_of?(ErrorOverrideOK) || !override
-	raise err
+        raise err
       end
     end
   end

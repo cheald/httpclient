@@ -87,18 +87,6 @@ class TestCookie < Test::Unit::TestCase
     assert_equal(false, @c.head_match?("bcde","abcde"))
   end
 
-  def test_tail_match?()
-    assert_equal(true, @c.tail_match?("",""))
-    assert_equal(false, @c.tail_match?("a",""))
-    assert_equal(true, @c.tail_match?("","a"))
-    assert_equal(true, @c.tail_match?("abcde","abcde"))
-    assert_equal(false, @c.tail_match?("abcde","abcdef"))
-    assert_equal(false, @c.tail_match?("abcdef","abcde"))
-    assert_equal(false, @c.tail_match?("abcde","bcde"))
-    assert_equal(true, @c.tail_match?("bcde","abcde"))
-  end
-
-
   def test_domain_match()
     extend WebAgent::CookieUtils
     assert_equal(true, !!domain_match("hoge.co.jp","."))
