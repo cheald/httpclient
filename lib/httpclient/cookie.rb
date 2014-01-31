@@ -25,21 +25,16 @@ class WebAgent
 
     def domain_match(host, domain)
       return false if host.nil? or domain.nil?
-      @domain_match_cache ||= {}
-      key = (host + "|" + domain).downcase
-      if !@domain_match_cache.key?(key)
-        domainname = domain.sub(/\.\z/, '').downcase
-        hostname = host.sub(/\.\z/, '').downcase
-        @domain_match_cache[key] = case domain
-        when '.'
-          true
-        when /^\./
-          ("." + hostname).end_with?(domainname)
-        else
-          hostname == domainname
-        end
+      domainname = domain.sub(/\.\z/, '').downcase
+      hostname = host.sub(/\.\z/, '').downcase
+      case domain
+      when '.'
+        true
+      when /^\./
+        ("." + hostname).end_with?(domainname)
+      else
+        hostname == domainname
       end
-      @domain_match_cache[key]
     end
   end
 
