@@ -24,6 +24,7 @@ class WebAgent
     end
 
     def domain_match(host, domain)
+      return false if host.nil? or domain.nil?
       @domain_match_cache ||= {}
       key = (host + "|" + domain).downcase
       if !@domain_match_cache.key?(key)
